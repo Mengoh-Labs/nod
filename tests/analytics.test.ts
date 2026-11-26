@@ -358,6 +358,7 @@ const beforeLoginItem=captured.length;
 captureAnalytics('login_item_observed',{login_item:'registered'});
 captureAnalytics('login_item_observed',{login_item:'/Users/private-name'});
 const loginItems=captured.slice(beforeLoginItem).filter(event=>event.event==='login_item_observed');
+assert.equal(loginItems.length,1);
 assert.equal(loginItems[0].properties.login_item,'registered');
 assert.equal(JSON.stringify(captured.slice(beforeLoginItem)).includes('private-name'),false);
 configureAnalytics(undefined,'desktop');dom.window.close();

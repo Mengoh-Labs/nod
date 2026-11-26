@@ -499,6 +499,7 @@ function sanitizeEvent(event: CaptureResult | null): CaptureResult | null {
     (event.event === 'answer_choices_viewed' ||
       event.event === 'answer_choices_selected' ||
       event.event === 'chat_message_sent' ||
+      event.event === 'login_item_observed' ||
       event.event === 'presentation_action') &&
     Object.entries(allowed).some(([key, values]) => !values.includes(event.properties[key]))
   )
