@@ -29,6 +29,7 @@ type AnalyticsEvents = {
     login_item?: 'registered' | 'not_registered' | 'unknown';
     since_boot?: 'under_5m' | 'under_1h' | 'over_1h';
   };
+  login_item_observed: { login_item: 'registered' | 'not_registered' };
   onboarding_step_viewed: {
     step: OnboardingStep;
     direction: 'forward' | 'back';
@@ -183,6 +184,7 @@ const eventProperties: Record<keyof AnalyticsEvents, Record<string, readonly unk
     login_item: ['registered', 'not_registered', 'unknown'],
     since_boot: ['under_5m', 'under_1h', 'over_1h'],
   },
+  login_item_observed: { login_item: ['registered', 'not_registered'] },
   onboarding_step_viewed: {
     step: onboardingSteps,
     direction: ['forward', 'back'],
