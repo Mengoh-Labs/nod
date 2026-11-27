@@ -1624,6 +1624,21 @@ test(
           const stuck = await started();
           await wait(stuck);
           assert.equal((await active())?.status, 'waiting');
+          const approvalId = randomUUID();
+          await db.pool.query(
+            `INSERT INTO approvals(id,owner_id,thread_id,turn_id,action,args,status)
+             SELECT $1,owner_id,thread_id,id,'MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES','{}','pending' FROM turns WHERE id=$2`,
+            [approvalId, stuck],
+          );
+          const count = (await runs(schedule.id)).length;
+          assert.equal((await fire()).length, count);
+          assert.equal(await status(stuck), 'waiting');
+          assert.equal(
+            (await db.pool.query('SELECT status FROM approvals WHERE id=$1', [approvalId])).rows[0]
+              .status,
+            'pending',
+          );
+          await db.pool.query("UPDATE approvals SET status='expired' WHERE id=$1", [approvalId]);
           const next = await started();
           assert.equal(await status(stuck), 'cancelled');
           await wait(next);

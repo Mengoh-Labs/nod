@@ -1,3 +1,4 @@
+import { teamsChatRead } from './teams-chat-read.ts';
 import type { Pool } from 'pg';
 import { computerInternalArgs, isComputerAction } from './computer-use.ts';
 import { z } from 'zod';
@@ -512,6 +513,18 @@ export function createCommunication(options: {
     delete details.verifiedCalendarRevision;
     delete details.verifiedInstructionRevision;
     delete details.reason;
+    const chatRead = teamsChatRead(proposal.action, proposal.args);
+    if (chatRead) {
+      const account = details.account as { identity?: unknown; name?: unknown } | undefined;
+      const identity = typeof account?.identity === 'string' ? account.identity : account?.name;
+      const accountText =
+        typeof identity === 'string' ? ` using ${markdownValue(confirmationText(identity))}` : '';
+      const limit = chatRead.top ? `up to ${chatRead.top} messages` : 'messages';
+      return {
+        question: `Read ${limit} from Teams chat ${markdownValue(chatRead.chat_id)}${accountText}?`,
+        action: 'Read messages',
+      };
+    }
     const permanentDeletion =
       proposal.action === 'GMAIL_DELETE_DRAFT' || proposal.action === 'GMAIL_DELETE_MESSAGE';
     if (!permanentDeletion) {

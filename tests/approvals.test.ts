@@ -859,6 +859,27 @@ test('confirmation keeps bold on checked values and escapes every other Markdown
   }
 });
 
+test('Teams read confirmation binds its wording to the actual target and account', async () => {
+  const communication = createCommunication({
+    pool: { query: async () => ({ rows: [] }) } as unknown as pg.Pool,
+    ownerId: 'synthetic-owner',
+    review: async () => {
+      throw new Error('Unexpected model request');
+    },
+  });
+  const result = await communication.describe({
+    turn: { threadId: 'synthetic-thread', turnId: 'synthetic-turn' },
+    action: 'MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES',
+    args: { connectionId: randomUUID(), chat_id: '19:fixture@thread.v2', top: 10 },
+    details: { account: { identity: 'owner@example.test' } },
+    work: { kind: 'schedule', title: 'Different chat name' },
+  });
+  assert.match(result.question, /19:fixture@thread\.v2/);
+  assert.match(result.question, /owner@example\.test/);
+  assert.match(result.question, /10 messages/);
+  assert.doesNotMatch(result.question, /Different chat name/);
+});
+
 test('Gmail deletion names verified identity without model wording', async () => {
   const communication = createCommunication({
     pool: { query: async () => ({ rows: [] }) } as unknown as pg.Pool,

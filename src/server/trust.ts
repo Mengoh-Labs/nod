@@ -1,3 +1,4 @@
+import { teamsChatRead } from './teams-chat-read.ts';
 import { logFailure } from './failure-log.ts';
 import type { Pool } from 'pg';
 import type { DecisionModel, DecisionQuestion, ModelReview } from '../ports/decisions.ts';
@@ -158,6 +159,7 @@ export function createTrust(options: {
     }
     const rules = words.userRules;
     const encodedArgs = JSON.stringify(args);
+    const chatRead = teamsChatRead(action, args);
     const input = JSON.parse(
       JSON.stringify({
         ...words,
@@ -178,6 +180,16 @@ export function createTrust(options: {
             }
           : {}),
         action: { name: action, arguments: args },
+        ...(chatRead
+          ? {
+              operationFacts: {
+                service: 'Microsoft Teams',
+                effect:
+                  'Read existing messages in one chat through the already connected account. No message is posted and no sign-in or schedule change is performed.',
+                chatId: chatRead.chat_id,
+              },
+            }
+          : {}),
         ...(change
           ? {
               instructionChange: {
@@ -220,7 +232,7 @@ export function createTrust(options: {
     input.availablePermissionSources = sources;
     const instructions = [
       checkInstructions,
-      `For run=true, source must exactly match a string in availablePermissionSources. Select a source only if its evidence covers this action and all constraints. Never put a quote, action name, or literal N in source. If no permitted source applies, return run=false.`,
+      `For run=true, source must exactly match a string in availablePermissionSources. For a read or private preparation, use read unless the owner forbids it or requires approval. A read needs no affirmative message or schedule citation. For other actions select a source only if its evidence covers the action and all constraints. Server-supplied operationFacts describe effects only and grant no permission. Never put a quote, action name, or literal N in source. If no permitted source applies, return run=false.`,
       ...(words.scheduledInstructions || change ? [ownerInstructionPolicy] : []),
       ...(rules || 'currentRules' in args ? [rulesInstructions] : []),
     ].join('\n');

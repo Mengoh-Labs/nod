@@ -505,7 +505,7 @@ export function createSchedules(dependencies: ScheduleDependencies) {
     return { ok: true };
   }
 
-  async function cancelWaitingRun(id: string) {
+  async function cancelWaitingRun(id: string, timedRevision?: number) {
     const capture = snapshotAnalytics(dependencies.analytics);
     const cancelled = await cancellationTransaction(async (client) => {
       const thread = await lockThread(client, ownerId);
@@ -516,8 +516,12 @@ export function createSchedules(dependencies: ScheduleDependencies) {
               await client.query<{ sessionId: string }>(
                 `SELECT r.turn_id AS "sessionId" FROM schedule_runs r
                  JOIN turns u ON u.session_id=r.turn_id AND u.owner_id=r.owner_id
-                 WHERE r.owner_id=$1 AND r.schedule_id=$2 AND u.id=$3 AND u.thread_id=$4`,
-                [ownerId, id, run.turnId, thread.id],
+                 WHERE r.owner_id=$1 AND r.schedule_id=$2 AND u.id=$3 AND u.thread_id=$4
+                   AND ($5::integer IS NULL OR (r.schedule_revision=$5 AND NOT EXISTS (
+                     SELECT 1 FROM approvals a WHERE a.owner_id=r.owner_id AND a.turn_id=u.id
+                       AND a.status='pending' AND a.action='MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES'
+                   )))`,
+                [ownerId, id, run.turnId, thread.id, timedRevision ?? null],
               )
             ).rows[0]?.sessionId
           : undefined;
@@ -547,7 +551,8 @@ export function createSchedules(dependencies: ScheduleDependencies) {
         ? await dependencies.watchState?.(watched.watch).catch(() => null)
         : null;
     job.signal.throwIfAborted();
-    if (watched?.kind === 'recurring') await cancelWaitingRun(job.data.scheduleId);
+    if (watched?.kind === 'recurring')
+      await cancelWaitingRun(job.data.scheduleId, job.data.revision);
     job.signal.throwIfAborted();
     const accepted = await transaction(async (client) => {
       const row = (
