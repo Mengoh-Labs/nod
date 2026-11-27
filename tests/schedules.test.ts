@@ -2483,6 +2483,10 @@ test(
             await deliver([job]);
             const [run] = await runs(schedule.id);
             assert.equal(await personal.scheduleCache(run!.turnId), expected);
+            assert.deepEqual(await personal.scheduleRunTime(run!.turnId), {
+              scheduledFor: new Date(job.data.scheduledFor).toISOString(),
+              timeZone: 'Europe/Lisbon',
+            });
             assert.equal(
               (await request('DELETE', `/api/schedules/${schedule.id}`)).statusCode,
               200,

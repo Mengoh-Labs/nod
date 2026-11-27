@@ -48,7 +48,7 @@ import {
   systemPrompt,
 } from './prompt.ts';
 import { untrustedBlock } from '../shared/untrusted.ts';
-import { currentUserTime, localResultTimes } from './time-context.ts';
+import { currentUserTime, localResultTimes, requestTime } from './time-context.ts';
 import { connectedTools, mcpNamespaces, nodTools } from './tools.ts';
 import type { ReplyDelivery, Turn } from './turn.ts';
 import type { ExecutionScope, WorkspaceCommandRecord } from '../shared/execution.ts';
@@ -250,6 +250,7 @@ export function createAgentRuntime(dependencies: {
     const lifecycle = new AbortController();
     const context = { ...input, signal: AbortSignal.any([input.signal, lifecycle.signal]) };
     const { signal, threadId } = context;
+    const hostClock = () => requestTime(context);
     const sessionId = threadIdentity(context.sessionId);
     const browserId = sessionId;
     const execution: ExecutionScope = {
@@ -1187,6 +1188,7 @@ export function createAgentRuntime(dependencies: {
               })),
             workspace: { ...workspace, path: childPath },
             timeZone: context.timeZone,
+            requestTime: hostClock,
             runTool: async (name, params, run, options) => {
               if (capped) return spent();
               partialFresh = false;
@@ -1384,6 +1386,7 @@ export function createAgentRuntime(dependencies: {
         workspace,
         ...(context.readAudio ? { readAudio: context.readAudio } : {}),
         timeZone: context.timeZone,
+        requestTime: hostClock,
         runTool: sandboxTool(execution, workspace.path),
         shouldStop: (results) => {
           if (deferredPause && !results?.some((result) => result.error !== undefined)) {

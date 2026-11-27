@@ -41,6 +41,7 @@ import {
   openLocalSession,
   readPiSessionEntries,
 } from '../src/providers/pi/checkpoint.ts';
+import { requestTime } from '../src/runtime/time-context.ts';
 import { createPiAgent } from '../src/providers/pi/index.ts';
 import { createPiMemoryCurator } from '../src/providers/pi/memory-curator.ts';
 import { createPiUsageTracker } from '../src/providers/pi/usage.ts';
@@ -14458,4 +14459,83 @@ test('Ollama discovery uses the loaded context for model registration and comple
   calls.length = 0;
   await backend.catalog('compatible', 'api_key', credential);
   assert.ok(!calls.includes('/api/ps'));
+});
+
+test('model requests refresh the host clock after a tool call while keeping the run date', async (t) => {
+  const window = 131_072;
+  const { bodies, url, close } = await contextRecoveryServer(1, 1, -1, false, window, [
+    { name: 'fixture_read', args: {} },
+  ]);
+  t.after(close);
+  const access = smallContextAccess('compatible', 'fixture-context', window);
+  access.read = async () => ({ type: 'endpoint', url, key: 'fixture-key' });
+  access.definition.spec = { ...access.definition.spec, baseUrl: url };
+  const directory = await mkdtemp(join(tmpdir(), 'nod-pi-clock-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { workspace } = await hostSandbox(t);
+  const agent = createPiAgent({
+    provider: 'compatible',
+    sessionRoot: directory,
+    resolve: async () => access,
+  });
+  t.after(() => agent.dispose());
+  const instants = ['2026-11-28T04:59:59Z', '2026-11-28T05:00:00Z'];
+  let requests = 0;
+  const session = await agent.open({
+    requestTime: () =>
+      requestTime(
+        {
+          timeZone: 'America/New_York',
+          scheduleRun: { scheduledFor: '2026-11-27T15:30:00Z', timeZone: 'America/New_York' },
+        },
+        new Date(instants[requests++]!),
+      ),
+    ...fakeExecution(randomUUID()),
+    systemPrompt: 'Read the fixture.',
+    workspace,
+    runTool: async (_name, _params, run) => run(),
+    tools: [
+      {
+        name: 'fixture_read',
+        description: 'Read a synthetic record.',
+        parameters: Type.Object({}),
+        execute: async () => ({ content: [{ type: 'text', text: 'Fixture record.' }] }),
+      },
+    ],
+    shouldStop: () => false,
+    onEvent: () => {},
+  });
+  t.after(() => session.dispose());
+  await session.prompt('Read the synthetic record.', []);
+  assert.equal(bodies.length, 2);
+  for (const [index, body] of bodies.entries()) {
+    const system = JSON.stringify(
+      body.messages.filter((message) => (message as { role: string }).role === 'system'),
+    );
+    assert.equal(system.split('Nod host clock').length - 1, 1);
+    assert.match(system, /Scheduled run due: Friday, 2026-11-27T10:30:00-05:00/);
+    assert.ok(
+      system.includes(
+        index === 0 ? 'Friday, 2026-11-27T23:59:59-05:00' : 'Saturday, 2026-11-28T00:00:0',
+      ),
+    );
+  }
+});
+
+test('host clock distinguishes repeated local hours and falls back to UTC without a zone', () => {
+  const first = new Date('2026-11-01T05:30:00Z');
+  const second = new Date('2026-11-01T06:30:00Z');
+  assert.match(
+    requestTime({ timeZone: 'America/New_York' }, first),
+    /Sunday, 2026-11-01T01:30:00-04:00/,
+  );
+  assert.match(
+    requestTime({ timeZone: 'America/New_York' }, second),
+    /Sunday, 2026-11-01T01:30:00-05:00/,
+  );
+  for (const timeZone of [undefined, 'Missing/Zone']) {
+    const anchor = requestTime({ timeZone }, second);
+    assert.match(anchor, /Current UTC time: Sunday, 2026-11-01T06:30:00/);
+    assert.match(anchor, /time zone: unknown/);
+  }
 });

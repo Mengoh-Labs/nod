@@ -275,6 +275,16 @@ export function createSchedules(dependencies: ScheduleDependencies) {
     })[0]!;
   }
 
+  async function scheduleRunTime(sessionId: string) {
+    const {
+      rows: [run],
+    } = await pool.query<{ scheduledFor: Date; timeZone: string }>(
+      'SELECT scheduled_for AS "scheduledFor", time_zone AS "timeZone" FROM schedule_runs WHERE owner_id=$1 AND turn_id=$2',
+      [ownerId, sessionId],
+    );
+    if (run) return { scheduledFor: run.scheduledFor.toISOString(), timeZone: run.timeZone };
+  }
+
   async function scheduleCache(turnId: string): Promise<'short' | 'long' | undefined> {
     const row = (
       await pool.query<{ cron: string; timeZone: string; scheduledFor: Date }>(
@@ -1410,6 +1420,7 @@ export function createSchedules(dependencies: ScheduleDependencies) {
   return {
     initialize,
     scheduleCache,
+    scheduleRunTime,
     list,
     get: async (id: string) => value(await read(id)),
     create,

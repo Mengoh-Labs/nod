@@ -6,11 +6,32 @@ import {
   localTimestamp,
 } from '../shared/date-locale.ts';
 
+function datedInstant(timeZone: string, at: Date) {
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long' }).format(at);
+  return `${weekday}, ${localTimestamp(timeZone, at)} [${timeZone}]`;
+}
+
 export function currentUserTime(timeZone: string | undefined, now = new Date()) {
-  const utc = `Current UTC time: ${now.toISOString()}.`;
-  if (!timeZone) return `${utc} User time zone: unknown, so ask before relying on local time.`;
-  const local = localTimestamp(timeZone, now);
-  return `Current local time: ${local}. User time zone: ${timeZone}.`;
+  const utc = `Current UTC time: ${datedInstant('UTC', now)}.`;
+  if (timeZone) {
+    try {
+      return `Current local time: ${datedInstant(timeZone, now)}. ${utc}`;
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+    }
+  }
+  return `${utc} User time zone: unknown, so ask before relying on local time.`;
+}
+
+export function requestTime(
+  context: Pick<RuntimeContext, 'timeZone' | 'scheduleRun'>,
+  now = new Date(),
+) {
+  const clock = `Nod host clock for this request. ${currentUserTime(context.timeZone, now)} Use this clock for today and now. Earlier messages may refer to other dates.`;
+  const run = context.scheduleRun;
+  return run
+    ? `${clock} Scheduled run due: ${datedInstant(run.timeZone, new Date(run.scheduledFor))}. Use this date and weekday when labeling this run. Keep source events dated by their own timestamps.`
+    : clock;
 }
 
 export function localResultTimes(texts: string[], timeZone: string | undefined, jsonLines = false) {

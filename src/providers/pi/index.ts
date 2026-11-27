@@ -1205,7 +1205,16 @@ export function createPiAgent(options: {
 
       const stream = session.agent.streamFunction;
       session.agent.streamFunction = async (target, context, options) => {
-        const response = await stream(target, context, options);
+        const clock = input.requestTime?.();
+        let messages = context.messages;
+        if (clock) {
+          const [first, ...rest] = messages;
+          messages =
+            first?.role === 'system'
+              ? [{ ...first, sections: { ...first.sections, hostClock: clock } }, ...rest]
+              : [{ role: 'system', content: clock, timestamp: 0 }, ...messages];
+        }
+        const response = await stream(target, { ...context, messages }, options);
         if (compaction) compaction.requests.push(await response.result());
         return response;
       };

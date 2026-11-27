@@ -20,6 +20,8 @@ A schedule runs **One time** or is **Recurring**. Nod tells you when it's saved 
 
 Nod uses your time zone, saved from your browser the first time you use Nod. Change it in **Settings → General**. If Nod doesn't know your time zone, it asks.
 
+During a run, the assistant receives the current weekday and time from the server. It also receives the original due date, weekday and time in the schedule’s saved time zone, even when work continues past midnight.
+
 ## Change, pause or delete a schedule
 
 Open **Scheduled**. Select **New schedule** to start a conversation with Nod, which asks one question at a time about what to do and when. Each schedule is one row with its timing, next run and model.

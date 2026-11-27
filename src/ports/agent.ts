@@ -114,6 +114,7 @@ export interface RuntimeContext {
   prompt: string;
   audioCaption?: string;
   background?: boolean;
+  scheduleRun?: { scheduledFor: string; timeZone: string };
   scheduleCache?: 'short' | 'long';
   model?: ModelSelection;
   modelChosen?: boolean;
@@ -379,6 +380,7 @@ export interface AgentSessionOptions extends ExecutionScope {
   scheduleCache?: 'short' | 'long';
   contextRestart?: string;
   keepWarm?(): Promise<boolean>;
+  requestTime?(): string;
   systemPrompt: string;
   ownerContext?: string;
   compactInstructions?: { systemPrompt: string; ownerContext?: string };

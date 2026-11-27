@@ -299,6 +299,7 @@ export interface ThreadDependencies {
   ) => Promise<void>;
   spendingLimit?: () => Promise<{ monthlyUsd: number } | null>;
   checkIn?: (sessionId: string, turnId: string) => Promise<RuntimeContext['checkIn']>;
+  scheduleRunTime?: (sessionId: string) => Promise<RuntimeContext['scheduleRun']>;
   scheduleCache?: (turnId: string) => Promise<RuntimeContext['scheduleCache']>;
   skipTurn?: (sourceId: string) => Promise<boolean>;
   accountProfile?: () => Promise<RuntimeContext['account']>;
@@ -2647,7 +2648,10 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
       return;
     }
     await emit('started', 'Turn started.');
-    const checkIn = await dependencies.checkIn?.(turn.session_id, turnId);
+    const [checkIn, scheduleRun] = await Promise.all([
+      dependencies.checkIn?.(turn.session_id, turnId),
+      turn.session_id !== threadId ? dependencies.scheduleRunTime?.(turn.session_id) : undefined,
+    ]);
     const speech = {
       mode: (await dependencies.audioReplies?.()) ?? defaultPreferences.speechReply,
       available: Boolean(dependencies.speech.configured),
@@ -2676,6 +2680,7 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
       taskContext,
       tasks,
       ...(checkIn ? { checkIn } : {}),
+      ...(scheduleRun ? { scheduleRun } : {}),
       ...(limit ? { spendingLimitReached: { monthlyUsd: limit.monthlyUsd } } : {}),
       currentMessageId: burst.at(-1),
       automatic:

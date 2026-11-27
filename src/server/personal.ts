@@ -392,6 +392,7 @@ export function createPersonalService(dependencies: PersonalDependencies) {
   return {
     initialize,
     scheduleCache: schedules.scheduleCache,
+    scheduleRunTime: schedules.scheduleRunTime,
     listSchedules: schedules.list,
     getSchedule: schedules.get,
     manage,
