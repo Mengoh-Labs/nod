@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app';
+import { PhoneManagement } from './pages/phone-management';
 import { AppRoot } from './components/app-boundary';
 import { initializeTheme } from './lib/theme';
 import { initializeFocusVisibility } from './lib/focus';
@@ -65,6 +66,7 @@ import './components/sidebar-toggle.css';
 import './components/action-menu.css';
 import './components/tooltip.css';
 
+const phoneManagement = ['/phone/apps', '/phone/settings'].includes(window.location.pathname);
 initializeTheme();
 initializeFocusVisibility();
 window.addEventListener('error', (event) =>
@@ -75,7 +77,7 @@ window.addEventListener('unhandledrejection', (event) =>
 );
 sessionStore.subscribe(() => {
   const { session } = sessionStore.getSnapshot();
-  configureAnalytics(session?.user ? session.analytics : undefined);
+  if (!phoneManagement) configureAnalytics(session?.user ? session.analytics : undefined);
 });
 
 if (window.location.pathname === '/trust')
@@ -90,7 +92,15 @@ window.addEventListener('hashchange', async () => {
 void claimAccess().finally(() =>
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <AppRoot>{(sessionState) => <App sessionState={sessionState} />}</AppRoot>
+      <AppRoot>
+        {(sessionState) =>
+          phoneManagement ? (
+            <PhoneManagement state={sessionState} />
+          ) : (
+            <App sessionState={sessionState} />
+          )
+        }
+      </AppRoot>
     </StrictMode>,
   ),
 );

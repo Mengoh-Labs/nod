@@ -23,6 +23,8 @@ import {
 } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import { execFile } from 'node:child_process';
+import { request as socketRequest } from 'node:http';
+import { startPhoneManagement } from '../main/phone-management.mjs';
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
@@ -12412,4 +12414,46 @@ test('startup status masks overlapping credentials and private roots in one pass
   assert.ok(!review.content.includes('Synthetic Private Owner'));
   assert.ok(!review.content.includes('synthetic-private-cross-tail'));
   assert.ok(!review.content.includes('synthetic-private-path-tail'));
+});
+
+test('phone management restricts routes and binds provider sign-in to the initiating session', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'nod-phone-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const opened = [];
+  const stop = await startPhoneManagement(
+    directory,
+    async (path) => {
+      assert.equal(path, '/api/apps/calendar/connect');
+      return Response.json({ url: 'https://provider.example/consent' });
+    },
+    async (url) => opened.push(url),
+  );
+  t.after(stop);
+  function request(path, body, session = 'first') {
+    return new Promise((resolve, reject) => {
+      const req = socketRequest(
+        {
+          socketPath: join(directory, 'desktop.sock'),
+          path,
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-nod-phone-session': session },
+        },
+        (response) => {
+          response.resume();
+          response.on('end', () => resolve(response.statusCode));
+        },
+      );
+      req.on('error', reject);
+      req.end(JSON.stringify(body));
+    });
+  }
+  assert.equal(await request('/api/thread', {}), 403);
+  assert.equal(await request('/api/apps/../thread', {}), 403);
+  assert.equal(await request('/api/apps/calendar/connect', {}), 200);
+  const link = { url: 'https://provider.example/consent' };
+  assert.equal(await request('/phone/sign-in', link, 'second'), 403);
+  assert.equal(await request('/phone/sign-in', { url: 'https://unrelated.example' }), 403);
+  assert.equal(await request('/phone/sign-in', link), 200);
+  assert.equal(await request('/phone/sign-in', link), 403);
+  assert.deepEqual(opened, [link.url]);
 });

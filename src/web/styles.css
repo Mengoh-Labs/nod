@@ -2142,3 +2142,17 @@ input[type='range']:disabled {
   line-height: 1.5;
   text-align: center;
 }
+
+.phone-management {
+  height: 100dvh;
+  overflow: auto;
+  padding: 1rem;
+}
+.phone-management > nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.phone-management > nav button {
+  min-height: 44px;
+}

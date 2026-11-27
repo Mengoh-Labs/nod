@@ -60,6 +60,7 @@ import {
 } from './updates.mjs';
 import { clearInstalledWindowsUpdates, startWindowsInstall } from './windows-update.mjs';
 import { appOpenPath } from './app-links.mjs';
+import { startPhoneManagement } from './phone-management.mjs';
 import { trustSystemCertificates } from './system-certificates.mjs';
 import { opensAtLogin, setOpenAtLogin } from './login-item.mjs';
 import { createStartupFeedbackClient } from './feedback-client.mjs';
@@ -1727,6 +1728,51 @@ async function engineRequest(path, options = {}) {
   });
 }
 
+const phoneDirectory =
+  developmentDataRoot || testInstall
+    ? join(profileRoot, 'phone-companion')
+    : join(homedir(), 'Library', 'Application Support', 'Nodilus');
+const phoneEnabled = join(phoneDirectory, 'desktop-management.enabled');
+let phoneBridge;
+
+async function enablePhoneManagement() {
+  if (remoteConnection)
+    throw new Error('Pair the phone on the Mac that runs the local Nod server.');
+  phoneBridge ??= startPhoneManagement(
+    phoneDirectory,
+    (path, options) => {
+      if (remoteConnection || quitting) throw new Error('Local Nod is unavailable.');
+      return engineRequest(path, options);
+    },
+    (url) => shell.openExternal(url),
+  ).catch((error) => {
+    phoneBridge = undefined;
+    throw error;
+  });
+  await phoneBridge;
+}
+
+async function pairPhone() {
+  try {
+    const helper = join(homedir(), 'Applications', 'Pair with Nodilus.app');
+    if (!(await stat(helper).catch(() => undefined))?.isDirectory())
+      throw new Error('Install the Nodilus Mac companion first.');
+    await enablePhoneManagement();
+    await writeFile(phoneEnabled, '', { mode: 0o600 });
+    const reason = await shell.openPath(helper);
+    if (reason) throw new Error(reason);
+  } catch (error) {
+    dialog.showErrorBox('Could not pair an iPhone', error.message);
+  }
+}
+
+async function stopPhoneManagement() {
+  await rm(phoneEnabled, { force: true });
+  const stop = await phoneBridge;
+  stop?.();
+  phoneBridge = undefined;
+}
+
 function authenticationHeaders() {
   return remoteConnection
     ? { Authorization: `Bearer ${authToken}` }
@@ -3174,6 +3220,16 @@ else {
     .then(async () => {
       app.setName(appName);
       await recordStart().catch(() => {});
+      if (
+        process.platform === 'darwin' &&
+        !developmentDataRoot &&
+        !testInstall &&
+        (await stat(phoneEnabled).catch(() => undefined))?.isFile()
+      ) {
+        await enablePhoneManagement().catch((error) =>
+          dialog.showErrorBox('Phone management unavailable', error.message),
+        );
+      }
       const setupSession = session.fromPartition('nod-settings');
       setupSession.setPermissionCheckHandler(() => false);
       setupSession.setPermissionRequestHandler((_sender, _permission, callback) => callback(false));
@@ -3324,6 +3380,18 @@ else {
             submenu: [
               { role: 'about' },
               { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => showSettings() },
+              ...(process.platform === 'darwin'
+                ? [
+                    { label: 'Pair iPhone…', click: () => void pairPhone() },
+                    {
+                      label: 'Stop Phone Management',
+                      click: () =>
+                        void stopPhoneManagement().catch((error) =>
+                          dialog.showErrorBox('Could not stop phone management', error.message),
+                        ),
+                    },
+                  ]
+                : []),
               { label: 'Report bug…', click: showFeedback },
               {
                 id: 'desktop-update',

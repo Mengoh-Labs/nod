@@ -334,3 +334,11 @@ Run `pnpm run desktop:windows:prepare` on a Linux x64 Docker builder. Then, on W
 - [Troubleshooting](/deploy/troubleshooting/)
 - [Desktop releases](/contribute/desktop-releases/)
 - [Sandbox and browser](/how-it-works/sandbox-and-browser/)
+
+## Pair an iPhone for management on macOS
+
+Install the Nodilus companion on the Mac and iPhone. On the Mac, choose **Nod → Pair iPhone… → Grant management access**. In Nodilus, open **Settings → Scan pairing code**, check the Mac address, and confirm. A standard invitation is for assistant and device features. Generate a management invitation to administer apps and settings.
+
+On the paired iPhone, open **Settings → Manage apps** or **Server settings**. Nod serves its existing management screens through the companion’s certificate-pinned HTTPS connection. Provider sign-in opens on the Mac for the desktop callback. macOS permission prompts also require the Mac.
+
+The desktop connection uses a private Unix socket. Only management routes pass through it. The desktop engine credential stays in Nod. Each management session lasts 20 minutes and the companion checks the device grant on every request. Choose **Nod → Stop Phone Management** to close the desktop connection. To revoke one device, choose **Pair iPhone… → Manage paired phones** and select it.

@@ -286,7 +286,12 @@ export function saveDesktopChatReadCursor(
   return (window as DesktopWindow).nodDesktop?.setChatReadCursor?.(ownerId, threadId, cursor);
 }
 
+const phoneManagement =
+  typeof window !== 'undefined' &&
+  /^\/phone\/(apps|settings)$/.test(window.location?.pathname ?? '');
+
 export function desktopLinksAvailable() {
+  if (phoneManagement) return true;
   return typeof (window as DesktopWindow).nodDesktop?.openExternal === 'function';
 }
 
@@ -299,6 +304,16 @@ export function takeDesktopAppOpening(consented: boolean, distinctId: string | n
 }
 
 export async function openConnection(url: string) {
+  if (phoneManagement) {
+    const response = await fetch('/phone/sign-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok)
+      throw new Error('Could not open sign-in on the Mac. Start the connection again.');
+    return;
+  }
   if (desktopLinksAvailable()) await (window as DesktopWindow).nodDesktop!.openExternal(url);
   else window.location.assign(url);
 }
