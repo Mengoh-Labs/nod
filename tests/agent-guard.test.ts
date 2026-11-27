@@ -36,6 +36,7 @@ import { createAgentRuntime } from '../src/runtime/index.ts';
 import {
   inlineAppResult,
   privateEmailResult,
+  privateTeamsChatResult,
   mailCheckText,
   noMailCheck,
   type MailCheck,
@@ -3959,4 +3960,33 @@ test('delegated tool failure limits do not stop the parent or carry into another
   });
   assert.equal(children, 2);
   assert.equal(result.result.status, 'succeeded');
+});
+
+test('Teams pages batch ordinary messages and isolate a sign-in secret before disclosure', async () => {
+  const rows = ['Planning', 'Lunch at noon', 'fixture-secret', 'Friday'].map((content) => ({
+    from: { user: { email: 'fixture@example.test' } },
+    body: { content },
+    chatId: 'chat',
+  }));
+  const envelope = (value: unknown[]) => ({ data: { value, next: 'cursor' } });
+  let checks = 0;
+  const check: import('../src/server/integration-result.ts').MailCheck = async (
+    [batch],
+    _,
+    kind,
+  ) => {
+    assert.equal(kind, 'teams-chat');
+    checks++;
+    return [batch!.text.includes('fixture-secret')];
+  };
+  const ordinary = await privateTeamsChatResult(envelope(rows.slice(0, 2)), check);
+  assert.deepEqual(ordinary, envelope(rows.slice(0, 2)));
+  assert.equal(checks, 1);
+  const mixed = await privateTeamsChatResult(envelope(rows), check);
+  assert.ok(!JSON.stringify(mixed).includes('fixture-secret'));
+  assert.ok(JSON.stringify(mixed).includes('Lunch at noon'));
+  const uncertain = await privateTeamsChatResult(envelope(rows), async () => ['timed out']);
+  assert.ok(!JSON.stringify(uncertain).includes('Lunch at noon'));
+  assert.ok(JSON.stringify(uncertain).includes('timed out'));
+  await assert.rejects(privateTeamsChatResult(envelope(rows), check, AbortSignal.abort()));
 });

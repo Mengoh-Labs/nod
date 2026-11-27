@@ -84,6 +84,42 @@ const accountRouting = z.object({
   }),
 });
 
+export async function teamsMessageArguments(
+  args: Record<string, unknown>,
+  profile: () => Promise<unknown>,
+) {
+  const user = args.user_id;
+  if (user !== undefined && typeof user !== 'string')
+    throw new Error('Teams chat messages require a user GUID, me, or the connected account email.');
+  if (typeof user === 'string' && z.guid().safeParse(user).success) return args;
+  if (user !== undefined && user !== 'me' && !z.email().safeParse(user).success)
+    throw new Error(
+      'Use me for the connected Teams account or a Microsoft user GUID for another user. No chat messages were requested.',
+    );
+  const current = z
+    .object({
+      id: z.guid(),
+      mail: z.string().nullish(),
+      userPrincipalName: z.string().nullish(),
+    })
+    .safeParse(await profile());
+  if (!current.success)
+    throw new Error(
+      'Microsoft returned no valid user GUID for the selected Teams account. No chat messages were requested.',
+    );
+  if (
+    user &&
+    user !== 'me' &&
+    ![current.data.mail, current.data.userPrincipalName].some(
+      (address) => address?.toLowerCase() === user.toLowerCase(),
+    )
+  )
+    throw new Error(
+      'The supplied email belongs to a different Teams account. Supply that user’s Microsoft GUID. No chat messages were requested.',
+    );
+  return { ...args, user_id: current.data.id };
+}
+
 function providerFailure(action: string, result: Record<string, unknown>) {
   const data =
     result.data && typeof result.data === 'object' ? (result.data as Record<string, unknown>) : {};
@@ -508,7 +544,10 @@ export function createComposioProvider(options: {
       const toolkit = [...enabled]
         .sort((left, right) => right.length - left.length)
         .find((slug) => action.startsWith(`${slug.toUpperCase()}_`));
-      if (!toolkit) throw new Error('This action is outside the connected apps.');
+      if (!toolkit)
+        throw new Error(
+          'This action is outside the connected apps. Use SEARCH_TOOLS with the selected connection and copy the exact advertised action name.',
+        );
       return toolkit;
     }
     return {
@@ -607,6 +646,14 @@ export function createComposioProvider(options: {
               };
             }
           }
+          const chatRead = tools.MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES;
+          if (chatRead) {
+            tools.MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES = {
+              ...chatRead,
+              description:
+                `${chatRead.description ?? ''} For your connected Microsoft account, pass user_id "me". Nod resolves its user GUID. For a different user, supply their verified Microsoft user GUID.`.trim(),
+            };
+          }
           return {
             tools,
             suggestions: result.results.map((item) => ({
@@ -659,6 +706,35 @@ export function createComposioProvider(options: {
       async execute(action, args, accountId, signal) {
         signal?.throwIfAborted();
         const toolkit = actionToolkit(action);
+        if (action === 'MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES') {
+          args = await teamsMessageArguments(args, async () => {
+            if (!accountId)
+              throw new Error('Select a Teams account before resolving its Microsoft user GUID.');
+            const profile = await value.execute(
+              'MICROSOFT_TEAMS_GET_MY_PROFILE',
+              {},
+              { account: accountId },
+              {
+                signal,
+                maxRetries: 0,
+              } as Parameters<typeof value.execute>[3],
+            );
+            if (
+              profile.error != null ||
+              profile.resultType !== 'completed' ||
+              (profile.data &&
+                typeof profile.data === 'object' &&
+                'successful' in profile.data &&
+                profile.data.successful === false)
+            )
+              throw providerFailure(
+                'MICROSOFT_TEAMS_GET_MY_PROFILE',
+                profile as Record<string, unknown>,
+              );
+            return profile.data;
+          });
+          signal?.throwIfAborted();
+        }
         const result = await value
           .execute(action, args, accountId ? { account: accountId } : undefined, {
             signal,

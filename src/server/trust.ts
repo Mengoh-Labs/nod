@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import type { DecisionModel, DecisionQuestion, ModelReview } from '../ports/decisions.ts';
 import { withTurnLock, type TurnRef } from './thread.ts';
 import { turnOrigin, type ApprovalRepeat } from './approvals.ts';
-import { trustBasis, type TrustBasis, type TrustWords } from './trust-basis.ts';
+import { trustBasis, trustDecision, type TrustBasis, type TrustWords } from './trust-basis.ts';
 import {
   ownerInstructionPolicy,
   ownerChatRevision,
@@ -206,8 +206,21 @@ export function createTrust(options: {
       if (JSON.stringify(args) !== encodedArgs)
         throw new Error('The proposed action changed while it was being checked.');
     };
+    const replacesInstruction =
+      change && (action === 'NOD_schedule_create' || typeof change.changes.prompt === 'string');
+    const acceptedBasis = (answer: unknown) => {
+      const cited = trustBasis(answer, { ...words, action: { name: action, arguments: args } });
+      return replacesInstruction && cited?.kind !== 'message' && cited?.kind !== 'schedule'
+        ? undefined
+        : cited;
+    };
+    const sources = trustDecision(words)
+      .question.choices.map(({ value }) => value)
+      .filter((source) => acceptedBasis({ run: true, source }));
+    input.availablePermissionSources = sources;
     const instructions = [
       checkInstructions,
+      `For run=true, source must exactly match a string in availablePermissionSources. Select a source only if its evidence covers this action and all constraints. Never put a quote, action name, or literal N in source. If no permitted source applies, return run=false.`,
       ...(words.scheduledInstructions || change ? [ownerInstructionPolicy] : []),
       ...(rules || 'currentRules' in args ? [rulesInstructions] : []),
     ].join('\n');
@@ -221,16 +234,7 @@ export function createTrust(options: {
         });
     signal?.throwIfAborted();
     unchanged();
-    const cited = trustBasis(answer, {
-      ...words,
-      action: { name: action, arguments: args },
-    });
-    const replacesInstruction =
-      change && (action === 'NOD_schedule_create' || typeof change.changes.prompt === 'string');
-    const basis =
-      replacesInstruction && cited?.kind !== 'message' && cited?.kind !== 'schedule'
-        ? undefined
-        : cited;
+    const basis = acceptedBasis(answer);
     const instructionChange = change
       ? {
           instructionChange: structuredClone({
@@ -252,7 +256,7 @@ export function createTrust(options: {
         }
       : {};
     const verdict = (answer as { run?: unknown } | undefined)?.run;
-    if (!cited && !failed && verdict !== false)
+    if (!basis && !failed && verdict !== false)
       logFailure('trust_check_unusable', {
         name: 'TrustCheckUnusable',
         code: verdict === true ? 'basis_rejected' : 'no_answer',
@@ -278,7 +282,7 @@ export function createTrust(options: {
       (answer as { run?: unknown } | undefined)?.run !== false
     )
       throw new Error(
-        "The trust check couldn't decide this action, so it didn't run and the owner wasn't asked. Nothing was sent or changed.",
+        `Nod blocked the scheduled or background action locally before dispatch: ${failed ? 'the trust model request failed' : verdict === true ? 'the trust model returned an invalid permission source or mismatched constraints' : 'the trust model returned no usable verdict'}. No request was sent to the app. This result does not indicate a sign-in failure.`,
       );
     return {
       confirm: true,

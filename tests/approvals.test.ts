@@ -2814,10 +2814,20 @@ test(
         async () => {
           const turn = await begin('Summarise my inbox.');
           await trust.check(turn, 'GMAIL_FETCH_EMAILS', {});
+          const reviewInput = reviews.at(-1)!;
+          const eligible = reviewInput.userMessages.flatMap(
+            (message: { text: string; canAuthorize?: boolean }, index: number) =>
+              message.canAuthorize === false || !message.text.trim() ? [] : [`message:${index}`],
+          );
+          assert.deepEqual(
+            new Set(reviewInput.availablePermissionSources),
+            new Set(['read', ...eligible]),
+          );
           assert.deepEqual(
             Object.keys(reviews.at(-1)!).filter(
               (key) =>
                 ![
+                  'availablePermissionSources',
                   'userMessages',
                   'assistantMessageBeforeLatestUserMessage',
                   'action',

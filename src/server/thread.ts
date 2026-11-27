@@ -2478,6 +2478,7 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
         dependencies.mailCheck ?? noMailCheck,
         operation,
         nested,
+        action,
       );
       operation.throwIfAborted();
       return value;

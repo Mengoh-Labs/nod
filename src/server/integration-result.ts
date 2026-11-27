@@ -58,6 +58,7 @@ export type Mail = { from: string; subject: string; text: string };
 export type MailCheck = (
   emails: Mail[],
   signal?: AbortSignal,
+  kind?: 'teams-chat',
 ) => Promise<Array<boolean | string | undefined>>;
 
 const mailCheckChars = 8000;
@@ -220,14 +221,93 @@ export async function privateEmailResult(
     : { contentWithheld, result };
 }
 
+export async function privateTeamsChatResult(
+  value: unknown,
+  check: MailCheck,
+  signal?: AbortSignal,
+) {
+  if (!value || typeof value !== 'object' || !('data' in value))
+    return privateEmailResult(value, check, signal);
+  const data = value.data;
+  if (!data || typeof data !== 'object' || !('value' in data) || !Array.isArray(data.value))
+    return privateEmailResult(value, check, signal);
+  const { value: messages, ...paging } = data;
+  const envelope = (await privateEmailResult({ ...value, data: paging }, check, signal)) as Record<
+    string,
+    unknown
+  >;
+  if (!envelope.data || typeof envelope.data !== 'object') return envelope;
+  const limit = AbortSignal.timeout(90_000);
+  const stop = signal ? AbortSignal.any([signal, limit]) : limit;
+  const safe = messages.slice();
+  const groups: number[][] = [];
+  const reasons = new Map<string, number>();
+  let size = 0;
+  for (const [index, row] of messages.entries()) {
+    const length = (JSON.stringify(row) ?? 'null').length + 1;
+    if (!groups.length || size + length > mailCheckChars || groups.at(-1)!.length >= 10) {
+      groups.push([]);
+      size = 0;
+    }
+    groups.at(-1)!.push(index);
+    size += length;
+  }
+  async function screen(indices: number[]): Promise<void> {
+    signal?.throwIfAborted();
+    const text = JSON.stringify(indices.map((index) => messages[index]));
+    const [decision] = limit.aborted
+      ? ['the page safety check timed out']
+      : text.length > 30000
+        ? ['message exceeds the safety check limit']
+        : await check([{ from: 'Microsoft Teams', subject: '', text }], stop, 'teams-chat').catch(
+            () => ['the message safety check failed'],
+          );
+    signal?.throwIfAborted();
+    if (decision === false) return;
+    if (decision === true && indices.length > 1) {
+      const half = Math.ceil(indices.length / 2);
+      await screen(indices.slice(0, half));
+      await screen(indices.slice(half));
+      return;
+    }
+    const reason =
+      decision === true
+        ? 'contains an access secret'
+        : typeof decision === 'string'
+          ? decision
+          : 'no safety verdict';
+    reasons.set(reason, (reasons.get(reason) ?? 0) + indices.length);
+    for (const index of indices) safe[index] = { message: 'Teams message content withheld.' };
+  }
+  for (const group of groups) await screen(group);
+  return {
+    ...envelope,
+    data: { ...(envelope.data as object), value: safe },
+    ...(reasons.size
+      ? {
+          contentWithheld: {
+            messages: [...reasons.values()].reduce((sum, n) => sum + n, 0),
+            message:
+              'Teams returned the messages. Nod withheld content locally: ' +
+              [...reasons].map(([why, count]) => `${why} (${count})`).join('; '),
+          },
+        }
+      : {}),
+  };
+}
+
 export async function inlineAppResult(
   result: unknown,
   save: (text: string) => Promise<string>,
   check: MailCheck,
   signal?: AbortSignal,
   nested = false,
+  action?: string,
 ) {
-  result = await privateEmailResult(result, check, signal);
+  result =
+    action === 'MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES'
+      ? await privateTeamsChatResult(result, check, signal)
+      : await privateEmailResult(result, check, signal);
   if (nested) return result;
   const text = JSON.stringify(result ?? null);
   if (text.length <= appResultInlineChars) return result;

@@ -84,6 +84,12 @@ The browser confirms which app connected. If the page stays open, select **Retur
 
 Expired chat cards keep the app's name and icon, but their connection button is disabled; ask Nod for a new link. Your existing setup progress stays saved.
 
+## Reading Microsoft Teams chats
+
+For `MICROSOFT_TEAMS_LIST_USER_CHAT_MESSAGES`, use `me` or the connected account’s email to read as that account. Nod resolves its Microsoft user GUID through the selected connection. To target a different user, supply that user’s GUID.
+
+Nod checks returned Teams messages in batches for sign-in secrets. If a batch contains a secret, Nod checks smaller groups to identify which messages it can show. When a check times out, Nod reports the withheld content separately from a connection error.
+
 ## Manage connected accounts
 
 Connected cards in **Apps** show an account count beside the people icon. Select it to review account identities, reconnect or disconnect accounts. When **Add account** is available there, select it to connect another account. Disconnecting removes Nod's access through that connection. You can also review or revoke access in the provider's settings.

@@ -1541,13 +1541,20 @@ export async function createIntegrations(pool: Pool, options: IntegrationOptions
     client?: PoolClient,
   ): Promise<Slug> {
     if (!/^[A-Z][A-Z0-9_]*_[A-Z0-9_]+$/.test(action))
-      throw new IntegrationError('This action is outside the connected apps.', 403);
+      throw new IntegrationError(
+        'This action is outside the connected apps. Use SEARCH_TOOLS with the selected connection and copy the exact advertised action name.',
+        403,
+      );
     const rows = await connectionRows(ownerId, client);
     const selected = connectionId ? rows.find((row) => row.id === connectionId) : undefined;
     if (connectionId && !selected)
       throw new IntegrationError('This connected account is unavailable.', 404);
     const slug = matchingService(action, knownServices(rows));
-    if (!slug) throw new IntegrationError('This action is outside the connected apps.', 403);
+    if (!slug)
+      throw new IntegrationError(
+        'This action is outside the connected apps. Use SEARCH_TOOLS with the selected connection and copy the exact advertised action name.',
+        403,
+      );
     if (slug === retiredNotionMcp) throw new IntegrationError(retiredNotionMessage, 409);
     if (selected && selected.slug !== slug)
       throw new IntegrationError('This connected account is unavailable.', 404);

@@ -54,7 +54,10 @@ import {
   type IntegrationService,
   type IntegrationSession,
 } from '../src/ports/integrations.ts';
-import { createComposioProvider } from '../src/providers/composio/integrations.ts';
+import {
+  teamsMessageArguments,
+  createComposioProvider,
+} from '../src/providers/composio/integrations.ts';
 import { createComposioProxy } from '../src/providers/composio/proxy.ts';
 import { logFailure, withFailureLog } from '../src/server/failure-log.ts';
 import { serviceEnvironment } from '../src/providers/process.ts';
@@ -16133,3 +16136,28 @@ test(
     assert.equal((await f.service.activitySources()).length, 0);
   },
 );
+
+test('Teams chat reads resolve only the selected account and preserve explicit user targets', async () => {
+  const id = '7815a256-4435-4393-aa39-e37cf9bfc430';
+  const profile = async () => ({ id, userPrincipalName: 'owner@example.test' });
+  const explicit = { user_id: id, chat_id: 'fixture', top: 2 };
+  assert.deepEqual(await teamsMessageArguments(explicit, async () => assert.fail()), explicit);
+  for (const user of [undefined, 'me', 'OWNER@example.test']) {
+    assert.deepEqual(
+      await teamsMessageArguments({ ...explicit, user_id: user }, profile),
+      explicit,
+    );
+  }
+  await assert.rejects(
+    teamsMessageArguments({ user_id: 'another@example.test' }, profile),
+    /different Teams account/,
+  );
+  await assert.rejects(
+    teamsMessageArguments({ user_id: 'guessed' }, async () => assert.fail()),
+    /Microsoft user GUID/,
+  );
+  await assert.rejects(
+    teamsMessageArguments({}, async () => ({ id: 'invalid' })),
+    /no valid user GUID/,
+  );
+});
