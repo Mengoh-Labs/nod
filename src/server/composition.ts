@@ -137,6 +137,7 @@ import { createApprovals, turnOrigin } from './approvals.ts';
 import { createCommunication, publicText } from './communication.ts';
 import { logFailure } from './failure-log.ts';
 import { createTrust } from './trust.ts';
+import { normalizeTeamsChatRead, teamsChatRead } from './teams-chat-read.ts';
 import { untrustedBlock } from '../shared/untrusted.ts';
 import { createProactivity } from './proactivity.ts';
 import {
@@ -3063,6 +3064,11 @@ async function initializeApplication(
       localFiles: localFiles.available,
       computerUse: computerUse.available,
       integration: async (turn, action, args, options) => {
+        const chatAlias = normalizeTeamsChatRead(action, args);
+        if (chatAlias) {
+          action = chatAlias.action;
+          args = chatAlias.args;
+        }
         if (action === 'CONNECTED_HTTP') args = structuredClone(args);
         if (isComputerAction(action)) {
           if (action === 'COMPUTER_KEEP_OUT') {
@@ -3148,7 +3154,9 @@ async function initializeApplication(
               ? integrations.prepare(ownerId, action, args, turn, options.signal)
               : integrations.prepare(ownerId, action, args);
         const resolved =
-          isLocalFilesAction(action) || action === 'CONNECTED_HTTP' ? await prepare() : undefined;
+          isLocalFilesAction(action) || action === 'CONNECTED_HTTP' || teamsChatRead(action, args)
+            ? await prepare()
+            : undefined;
         const http =
           action === 'CONNECTED_HTTP'
             ? await discovered.approvalDetails(action, resolved!, options.signal)

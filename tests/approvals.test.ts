@@ -49,6 +49,7 @@ import {
   gmailDraftTarget,
   gmailMessageTarget,
 } from '../src/server/action-presentation.ts';
+import { normalizeTeamsChatRead, teamsMessagesAction } from '../src/server/teams-chat-read.ts';
 import { createCommunication } from '../src/server/communication.ts';
 import { channelReply } from '../src/server/channels.ts';
 import { ApprovalCard, ApprovalChoiceCard } from '../src/web/components/action-card.tsx';
@@ -857,6 +858,30 @@ test('confirmation keeps bold on checked values and escapes every other Markdown
     assert.match(text, /\*EC 279\* on \*2 December, 11:37\* for \*`jane@example\.test`\*/);
     assert.match(text, /次の12月2日の便ですか？/);
   }
+});
+
+test('the Teams chat read alias preserves the target and limit and refuses other effects', () => {
+  const action = 'microsoft_teams__get_chat_messages';
+  const target = { chat_id: '19:fixture@thread.v2', connectionId: randomUUID(), user_id: 'me' };
+  assert.deepEqual(normalizeTeamsChatRead(action, { ...target, limit: 10 }), {
+    action: teamsMessagesAction,
+    args: { ...target, top: 10 },
+  });
+  assert.deepEqual(normalizeTeamsChatRead(action, { chat_id: target.chat_id }), {
+    action: teamsMessagesAction,
+    args: { chat_id: target.chat_id },
+  });
+  for (const extra of [
+    { limit: -1 },
+    { top: 30, limit: 10 },
+    { recipient: 'elsewhere' },
+    { user_id: 'another-account' },
+  ])
+    assert.throws(
+      () => normalizeTeamsChatRead(action, { ...target, ...extra }),
+      /No request was sent/,
+    );
+  assert.equal(normalizeTeamsChatRead('microsoft_teams__send_chat_message', target), undefined);
 });
 
 test('Teams read confirmation binds its wording to the actual target and account', async () => {
