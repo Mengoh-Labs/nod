@@ -73,6 +73,7 @@ if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(configuration.version))
 manifest.releaseTag = `nod-v${configuration.version}`;
 const electronVersion = configuration.devDependencies.electron;
 configuration.nodBuild = {
+  updatePolicy: 'manual',
   source: await run('git', ['-C', root, 'rev-parse', 'HEAD'], { output: 'stdout' }),
   builtAt: new Date().toISOString(),
   platform: 'win32-x64',

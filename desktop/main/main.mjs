@@ -110,10 +110,11 @@ const rendererSecurity = {
   webviewTag: false,
   devTools: !app.isPackaged,
 };
-const testInstall =
-  app.isPackaged &&
-  JSON.parse(await readFile(join(desktopRoot, 'package.json'), 'utf8')).nodBuild?.testProfile ===
-    true;
+const packagedBuild = app.isPackaged
+  ? JSON.parse(await readFile(join(desktopRoot, 'package.json'), 'utf8')).nodBuild
+  : undefined;
+const testInstall = packagedBuild?.testProfile === true;
+const manualDesktopUpdates = packagedBuild?.updatePolicy === 'manual';
 const appName = testInstall ? 'nod Setup Test' : 'Nod';
 app.setName(process.platform === 'darwin' && app.isPackaged && !testInstall ? 'nod' : appName);
 const developmentDataRoot =
@@ -2315,6 +2316,7 @@ function updateFailureDetails(error) {
 }
 
 async function openUpdateDownload() {
+  if (manualDesktopUpdates) return;
   while (!installingUpdate) {
     try {
       await shell.openExternal('https://nod.n8n.io/docs/get-started/install-desktop/');
@@ -2400,6 +2402,7 @@ function refreshUpdateMenu() {
         { label: 'Report bug…', click: showFeedback },
         {
           label,
+          visible: !manualDesktopUpdates,
           enabled: Boolean(updates) && !checkingUpdates && !macInstallerBusy,
           click: () => void checkForUpdates(),
         },
@@ -2616,7 +2619,8 @@ async function rememberState(window) {
 }
 
 async function openedDuringUpdateRestart() {
-  if (process.platform !== 'darwin' || !app.isPackaged || testInstall) return false;
+  if (manualDesktopUpdates || process.platform !== 'darwin' || !app.isPackaged || testInstall)
+    return false;
   const running = await macInstallerRunning('dev.nod.desktop.ShipIt').catch(async (error) => {
     await updateEvent('installer-check-failed', { code: error.code, signal: error.signal });
   });
@@ -3252,6 +3256,7 @@ else {
         app.isPackaged &&
         !testInstall &&
         process.platform === 'darwin' &&
+        !manualDesktopUpdates &&
         !app.isInApplicationsFolder()
       ) {
         const { response } = await dialog.showMessageBox({
@@ -3271,14 +3276,15 @@ else {
         }
       }
       if (app.isPackaged && !testInstall && ['darwin', 'win32'].includes(process.platform)) {
-        const { nodBuild } = JSON.parse(await readFile(join(desktopRoot, 'package.json'), 'utf8'));
+        updateSource = createUpdateSource({
+          sourceUrl: packagedBuild?.updateSourceUrl,
+          fetch: chromiumFetch,
+        });
+      }
+      if (updateSource && !manualDesktopUpdates) {
         const windows = process.platform === 'win32';
         if (windows)
           await clearInstalledWindowsUpdates(windowsUpdates, app.getVersion()).catch(() => {});
-        updateSource = createUpdateSource({
-          sourceUrl: nodBuild?.updateSourceUrl,
-          fetch: chromiumFetch,
-        });
         updates = createDesktopUpdater({
           source: updateSource,
           currentVersion: app.getVersion(),
@@ -3395,6 +3401,7 @@ else {
               { label: 'Report bug…', click: showFeedback },
               {
                 id: 'desktop-update',
+                visible: !manualDesktopUpdates,
                 label: 'Check for Updates…',
                 enabled: Boolean(updates) && !macInstallerBusy,
                 click: () => void checkForUpdates(),

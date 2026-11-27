@@ -7738,6 +7738,28 @@ test('the startup installer monitor disables update actions until ShipIt exits',
   assert.equal(f.updateMenu.label, 'Check for Updates…');
 });
 
+test('manual desktop distributions ignore an upstream update restart', async (t) => {
+  let installerChecks = 0;
+  const f = await runningDesktop(t, () => assert.fail('Unexpected engine request'), {
+    packaged: true,
+    platform: 'darwin',
+    initialState: 'fresh',
+    buildMetadata: { updatePolicy: 'manual' },
+    updateResume: { version: '9.0.0' },
+    installerRunning: async () => {
+      installerChecks++;
+      return true;
+    },
+  });
+  try {
+    assert.equal(await f.detectInstaller(), false);
+    assert.equal(f.installerBusy(), false);
+    assert.equal(installerChecks, 0);
+  } finally {
+    await f.close();
+  }
+});
+
 test('ShipIt startup keeps manual update checks held until the installer exits', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let active = true;

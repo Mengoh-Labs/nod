@@ -143,6 +143,7 @@ else {
     throw new Error('The packaged runtime release is missing.');
 }
 configuration.nodBuild = {
+  updatePolicy: 'manual',
   source: await sourceRevision(),
   builtAt: new Date().toISOString(),
   modified: Boolean(await run('/usr/bin/git', ['-C', root, 'status', '--porcelain'])),
